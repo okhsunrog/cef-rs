@@ -415,6 +415,7 @@ pub struct WindowInfo {
     pub external_begin_frame_enabled: ::std::os::raw::c_int,
     pub window: ::std::os::raw::c_ulong,
     pub runtime_style: RuntimeStyle,
+    pub parent_xdg_surface: *mut ::std::os::raw::c_void,
 }
 impl WindowInfo {
     fn get_raw(&self) -> _cef_window_info_t {
@@ -433,6 +434,7 @@ impl From<_cef_window_info_t> for WindowInfo {
             external_begin_frame_enabled: value.external_begin_frame_enabled,
             window: value.window,
             runtime_style: value.runtime_style.into(),
+            parent_xdg_surface: value.parent_xdg_surface,
         }
     }
 }
@@ -448,6 +450,7 @@ impl From<WindowInfo> for _cef_window_info_t {
             external_begin_frame_enabled: value.external_begin_frame_enabled,
             window: value.window,
             runtime_style: value.runtime_style.into(),
+            parent_xdg_surface: value.parent_xdg_surface,
         }
     }
 }
@@ -12806,6 +12809,8 @@ pub trait ImplBrowserHost: Clone + Sized + Rc {
     fn runtime_style(&self) -> RuntimeStyle;
     #[doc = "See [`_cef_browser_host_t::set_ax_viewport_collapse`] for more documentation."]
     fn set_ax_viewport_collapse(&self, enabled: ::std::os::raw::c_int);
+    #[doc = "See [`_cef_browser_host_t::set_window_bounds`] for more documentation."]
+    fn set_window_bounds(&self, bounds: Option<&Rect>);
     fn get_raw(&self) -> *mut _cef_browser_host_t;
 }
 impl ImplBrowserHost for BrowserHost {
@@ -13872,6 +13877,20 @@ impl ImplBrowserHost for BrowserHost {
                 let arg_enabled = enabled;
                 let arg_self_ = self.into_raw();
                 f(arg_self_, arg_enabled);
+            }
+        }
+    }
+    fn set_window_bounds(&self, bounds: Option<&Rect>) {
+        unsafe {
+            if let Some(f) = self.0.set_window_bounds {
+                let arg_bounds = bounds;
+                let arg_self_ = self.into_raw();
+                let arg_bounds = arg_bounds.cloned().map(|arg| arg.into());
+                let arg_bounds = arg_bounds
+                    .as_ref()
+                    .map(std::ptr::from_ref)
+                    .unwrap_or(std::ptr::null());
+                f(arg_self_, arg_bounds);
             }
         }
     }
@@ -15020,7 +15039,7 @@ pub trait ImplMenuModel: Clone + Sized + Rc {
     ) -> ::std::os::raw::c_int;
     #[doc = "See [`_cef_menu_model_t::set_visible_at`] for more documentation."]
     fn set_visible_at(&self, index: usize, visible: ::std::os::raw::c_int)
-    -> ::std::os::raw::c_int;
+        -> ::std::os::raw::c_int;
     #[doc = "See [`_cef_menu_model_t::is_enabled`] for more documentation."]
     fn is_enabled(&self, command_id: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
     #[doc = "See [`_cef_menu_model_t::is_enabled_at`] for more documentation."]
@@ -15033,7 +15052,7 @@ pub trait ImplMenuModel: Clone + Sized + Rc {
     ) -> ::std::os::raw::c_int;
     #[doc = "See [`_cef_menu_model_t::set_enabled_at`] for more documentation."]
     fn set_enabled_at(&self, index: usize, enabled: ::std::os::raw::c_int)
-    -> ::std::os::raw::c_int;
+        -> ::std::os::raw::c_int;
     #[doc = "See [`_cef_menu_model_t::is_checked`] for more documentation."]
     fn is_checked(&self, command_id: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
     #[doc = "See [`_cef_menu_model_t::is_checked_at`] for more documentation."]
@@ -15046,7 +15065,7 @@ pub trait ImplMenuModel: Clone + Sized + Rc {
     ) -> ::std::os::raw::c_int;
     #[doc = "See [`_cef_menu_model_t::set_checked_at`] for more documentation."]
     fn set_checked_at(&self, index: usize, checked: ::std::os::raw::c_int)
-    -> ::std::os::raw::c_int;
+        -> ::std::os::raw::c_int;
     #[doc = "See [`_cef_menu_model_t::has_accelerator`] for more documentation."]
     fn has_accelerator(&self, command_id: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
     #[doc = "See [`_cef_menu_model_t::has_accelerator_at`] for more documentation."]
@@ -57291,6 +57310,23 @@ pub fn time_from_basetime(from: _cef_basetime_t, to: Option<&mut Time>) -> ::std
 pub fn get_xdisplay() -> *mut XDisplay {
     unsafe {
         let result = cef_get_xdisplay();
+        result.wrap_result()
+    }
+}
+
+/// See [`cef_set_wayland_display`] for more documentation.
+pub fn set_wayland_display(display: *mut u8) {
+    unsafe {
+        let arg_display = display;
+        let arg_display = arg_display.cast();
+        cef_set_wayland_display(arg_display);
+    }
+}
+
+/// See [`cef_get_wayland_display`] for more documentation.
+pub fn get_wayland_display() -> cef_wayland_display_handle_t {
+    unsafe {
+        let result = cef_get_wayland_display();
         result.wrap_result()
     }
 }

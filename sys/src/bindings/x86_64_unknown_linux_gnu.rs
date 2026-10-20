@@ -30,15 +30,16 @@ pub const CEF_API_VERSION_15200: i32 = 15200;
 pub const CEF_API_VERSION_15400: i32 = 15400;
 pub const CEF_API_VERSION_999998: i32 = 999998;
 pub const CEF_API_VERSION_999999: i32 = 999999;
+pub const CEF_API_HASH_999999: &[u8; 41] = b"a15420be190a255a6479f26806ed67fd59e1eeae\0";
 pub const CEF_API_VERSION_MIN: i32 = 13300;
 pub const CEF_API_VERSION_LAST: i32 = 15400;
 pub const CEF_API_VERSION_EXPERIMENTAL: i32 = 999999;
 pub const CEF_API_VERSION_NEXT: i32 = 999998;
 pub const CEF_API_VERSION: i32 = 999999;
-pub const CEF_VERSION: &[u8; 41] = b"154.0.34+g14c5a08+chromium-154.0.8037.98\0";
+pub const CEF_VERSION: &[u8; 50] = b"154.0.0-HEAD.3634+gedaadb6+chromium-154.0.8037.98\0";
 pub const CEF_VERSION_MAJOR: i32 = 154;
 pub const CEF_VERSION_MINOR: i32 = 0;
-pub const CEF_VERSION_PATCH: i32 = 34;
+pub const CEF_VERSION_PATCH: i32 = 0;
 pub const CHROME_VERSION_MAJOR: i32 = 154;
 pub const CHROME_VERSION_MINOR: i32 = 0;
 pub const CHROME_VERSION_BUILD: i32 = 8037;
@@ -17386,8 +17387,20 @@ pub type XDisplay = _XDisplay;
 pub type cef_cursor_handle_t = ::std::os::raw::c_ulong;
 pub type cef_event_handle_t = *mut XEvent;
 pub type cef_window_handle_t = ::std::os::raw::c_ulong;
+#[doc = "\n Handle type for a Wayland connection (struct wl_display*).\n"]
+pub type cef_wayland_display_handle_t = *mut ::std::os::raw::c_void;
+#[doc = "\n Handle type for an xdg_surface (struct xdg_surface*).\n"]
+pub type cef_xdg_surface_handle_t = *mut ::std::os::raw::c_void;
 unsafe extern "C" {
     pub fn cef_get_xdisplay() -> *mut XDisplay;
+}
+unsafe extern "C" {
+    #[doc = "\n Give CEF the Wayland connection (struct wl_display*) owned by the client\n application, so that browser surfaces can be created as subsurfaces of the\n client's surfaces. A wl_surface is a protocol object scoped to one\n connection and wl_subcompositor_get_subsurface() requires both surfaces to\n belong to the same one, so embedding is only possible if CEF joins the\n client's connection instead of opening its own.\n\n Must be called before CefInitialize. Chromium creates its Wayland connection\n while initializing Ozone, which happens during CefInitialize and long before\n any browser exists, so this is necessarily a process-global, one-time\n decision rather than a per-browser one.\n\n The client retains ownership and must keep the connection alive until after\n CefShutdown. CEF dispatches its own protocol traffic on a dedicated\n wl_event_queue and never calls wl_display_disconnect() on an adopted\n connection, so the client may keep running its own event loop on the\n default queue.\n\n Has no effect if the active Ozone platform is not Wayland.\n"]
+    pub fn cef_set_wayland_display(display: cef_wayland_display_handle_t);
+}
+unsafe extern "C" {
+    #[doc = "\n Return the Wayland connection used by Chromium, or NULL if the active Ozone\n platform is not Wayland. If the client provided a connection via\n cef_set_wayland_display() then that same connection is returned. Must only\n be accessed on the browser process UI thread.\n"]
+    pub fn cef_get_wayland_display() -> cef_wayland_display_handle_t;
 }
 #[doc = "\n Structure representing CefExecuteProcess arguments.\n"]
 #[repr(C)]
@@ -17417,7 +17430,7 @@ pub struct _cef_window_info_t {
     pub window_name: cef_string_t,
     #[doc = "\n Initial window bounds.\n"]
     pub bounds: cef_rect_t,
-    #[doc = "\n Pointer for the parent window.\n"]
+    #[doc = "\n Pointer for the parent window.\n\n When the active Ozone platform is Wayland this is a struct wl_surface*\n belonging to the client application, cast to cef_window_handle_t; the\n browser surface becomes a wl_subsurface of it. Under X11 it is an X11\n Window, as before. The field has always been an opaque native parent\n handle whose meaning depends on the platform -- it is an NSView* on\n macOS and an HWND on Windows -- and Wayland is no different; the\n unsigned long spelling here is an artifact of X11.\n\n A Wayland surface must belong to the connection previously passed to\n cef_set_wayland_display(). Note that CEF cannot tell a mistaken X11\n Window from a valid pointer, so passing the wrong kind of handle for the\n active platform is undefined rather than diagnosed.\n"]
     pub parent_window: cef_window_handle_t,
     #[doc = "\n Set to true (1) to create the browser using windowless (off-screen)\n rendering. No window will be created for the browser and all rendering\n will occur via the CefRenderHandler interface. The |parent_window| value\n will be used to identify monitor info and to act as the parent window for\n dialogs, context menus, etc. If |parent_window| is not provided then the\n main screen monitor will be used and some functionality that requires a\n parent window may not function correctly. In order to create windowless\n browsers the CefSettings.windowless_rendering_enabled value must be set to\n true. Transparent painting is enabled by default but can be disabled by\n setting CefBrowserSettings.background_color to an opaque value.\n"]
     pub windowless_rendering_enabled: ::std::os::raw::c_int,
@@ -17425,14 +17438,16 @@ pub struct _cef_window_info_t {
     pub shared_texture_enabled: ::std::os::raw::c_int,
     #[doc = "\n Set to true (1) to enable the ability to issue BeginFrame requests from\n the client application by calling CefBrowserHost::SendExternalBeginFrame.\n"]
     pub external_begin_frame_enabled: ::std::os::raw::c_int,
-    #[doc = "\n Pointer for the new browser window. Only used with windowed rendering.\n"]
+    #[doc = "\n Pointer for the new browser window. Only used with windowed rendering.\n\n Under Ozone/X11 this is the X11 Window of the browser, usable from any\n client on the connection. Under Ozone/Wayland it is not a protocol object\n at all: it is the gfx::AcceleratedWidget Ozone uses internally, an id\n meaningful only inside this process. A wl_surface cannot be handed back\n this way because it is scoped to the connection that created it, so an\n embedder that needs to address the browser's surface should keep the\n parent surface it passed in and position the browser through\n CefBrowserHost::SetWindowBounds() instead.\n"]
     pub window: cef_window_handle_t,
     #[doc = "\n Optionally change the runtime style. Alloy style will always be used if\n |windowless_rendering_enabled| is true. See cef_runtime_style_t\n documentation for details.\n"]
     pub runtime_style: cef_runtime_style_t,
+    #[doc = "\n The client application's xdg_surface (struct xdg_surface*), the one\n |parent_window| belongs to when it names a wl_surface.\n\n Required for the browser to open menus, <select> dropdowns, tooltips and\n autocomplete. A wl_subsurface has no xdg_surface role, and\n xdg_surface.get_popup demands an xdg_surface, so popups from an embedded\n browser have to be anchored on the client's instead. Their positions are\n then computed in the client's surface coordinates.\n\n May be NULL for hosts whose toolkit does not expose the xdg_surface. The\n browser then renders and takes input as usual, and popups fall back to a\n wl_subsurface of the browser. That fallback is degraded and deliberately\n so: a subsurface cannot extend past the host window, so a dropdown near an\n edge is clipped rather than repositioned, and it holds no grab, so\n clicking outside does not dismiss it. Provide the xdg_surface wherever the\n toolkit allows it.\n\n Ignored unless the active Ozone platform is Wayland.\n"]
+    pub parent_xdg_surface: cef_xdg_surface_handle_t,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of _cef_window_info_t"][::std::mem::size_of::<_cef_window_info_t>() - 88usize];
+    ["Size of _cef_window_info_t"][::std::mem::size_of::<_cef_window_info_t>() - 96usize];
     ["Alignment of _cef_window_info_t"][::std::mem::align_of::<_cef_window_info_t>() - 8usize];
     ["Offset of field: _cef_window_info_t::size"]
         [::std::mem::offset_of!(_cef_window_info_t, size) - 0usize];
@@ -17452,6 +17467,8 @@ const _: () = {
         [::std::mem::offset_of!(_cef_window_info_t, window) - 72usize];
     ["Offset of field: _cef_window_info_t::runtime_style"]
         [::std::mem::offset_of!(_cef_window_info_t, runtime_style) - 80usize];
+    ["Offset of field: _cef_window_info_t::parent_xdg_surface"]
+        [::std::mem::offset_of!(_cef_window_info_t, parent_xdg_surface) - 88usize];
 };
 #[doc = "\n Class representing window information.\n"]
 pub type cef_window_info_t = _cef_window_info_t;
@@ -25224,10 +25241,14 @@ pub struct _cef_browser_host_t {
     pub set_ax_viewport_collapse: ::std::option::Option<
         unsafe extern "C" fn(self_: *mut _cef_browser_host_t, enabled: ::std::os::raw::c_int),
     >,
+    #[doc = "\n Set the position and size of a windowed browser, relative to the parent\n window that was passed to cef_window_tInfo. Only used on Linux.\n\n On X11 the browser observes the parent window and resizes itself, so this\n is not needed. On Wayland there is no such signal: a wl_subsurface does\n not receive configure events, which are delivered to the client's\n xdg_toplevel instead. The client application must therefore forward its\n own layout changes here.\n\n |bounds| is in density-independent pixels, not device pixels. The values\n reach wl_subsurface.set_position, which is surface-local to the client's\n surface and therefore in the same logical units the compositor uses for\n that surface. A client that keeps its layout in device pixels must divide\n by its scale factor before calling this; the two are identical at scale 1,\n so getting it wrong is invisible until the window meets a HiDPI or\n fractional-scale output, where the browser lands offset by the scale.\n\n Note that wl_subsurface.set_position is part of the parent surface's\n double-buffered state, so the move only becomes visible when the client\n next commits its own surface.\n"]
+    pub set_window_bounds: ::std::option::Option<
+        unsafe extern "C" fn(self_: *mut _cef_browser_host_t, bounds: *const cef_rect_t),
+    >,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of _cef_browser_host_t"][::std::mem::size_of::<_cef_browser_host_t>() - 592usize];
+    ["Size of _cef_browser_host_t"][::std::mem::size_of::<_cef_browser_host_t>() - 600usize];
     ["Alignment of _cef_browser_host_t"][::std::mem::align_of::<_cef_browser_host_t>() - 8usize];
     ["Offset of field: _cef_browser_host_t::base"]
         [::std::mem::offset_of!(_cef_browser_host_t, base) - 0usize];
@@ -25369,6 +25390,8 @@ const _: () = {
         [::std::mem::offset_of!(_cef_browser_host_t, get_runtime_style) - 576usize];
     ["Offset of field: _cef_browser_host_t::set_ax_viewport_collapse"]
         [::std::mem::offset_of!(_cef_browser_host_t, set_ax_viewport_collapse) - 584usize];
+    ["Offset of field: _cef_browser_host_t::set_window_bounds"]
+        [::std::mem::offset_of!(_cef_browser_host_t, set_window_bounds) - 592usize];
 };
 #[doc = "\n Structure used to represent the browser process aspects of a browser. The\n functions of this structure can only be called in the browser process. They\n may be called on any thread in that process unless otherwise indicated in\n the comments.\n\n NOTE: This struct is allocated DLL-side.\n"]
 pub type cef_browser_host_t = _cef_browser_host_t;

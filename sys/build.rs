@@ -78,7 +78,19 @@ fn main() -> anyhow::Result<()> {
 
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
 
-    let cef_dir = if env::var("FLATPAK").is_ok() {
+    let cef_dir = if os_arch.os == "linux" {
+        // These bindings include fork-only, experimental Linux ABI. Never silently
+        // download a stock SDK, even when the configured SDK is missing or invalid.
+        let path = PathBuf::from(env::var("CEF_PATH").map_err(|_| {
+            anyhow::anyhow!("this Linux fork requires CEF_PATH pointing to the custom Wayland SDK")
+        })?);
+        let header = fs::read_to_string(path.join("include/internal/cef_types_linux.h"))?;
+        anyhow::ensure!(
+            header.contains("cef_set_wayland_display"),
+            "CEF_PATH does not contain the custom Wayland SDK"
+        );
+        path.canonicalize()?
+    } else if env::var("FLATPAK").is_ok() {
         let cef_path = String::from("/usr/lib");
         println!("Using CEF path from FLATPAK: {cef_path}");
         let cef_path = PathBuf::from(cef_path);
@@ -127,15 +139,14 @@ fn main() -> anyhow::Result<()> {
     println!("cargo::metadata=CEF_DIR={cef_dir_str}");
     println!("cargo::rustc-link-search=native={cef_dir_str}");
 
-    // Compile the wrapper against an explicit API version instead of the
-    // experimental (unversioned) API that CEF selects by default, which its
-    // own headers call "not back/forward compatible with different CEF
-    // versions". It is the version the crate declares at run time through
-    // `cef_api_hash(CEF_API_VERSION_LAST)`, so the two now agree; without it
-    // the macOS loader in `libcef_dll_dylib.cc` also resolves experimental
-    // entry points, and loading any libcef but this exact build fails on the
-    // first one missing.
-    let api_version = cef_api_version_last(&cef_dir)?;
+    // Keep wrapper metadata and the runtime's selected table consistent. This
+    // fork uses experimental Linux ABI; other platforms keep the newest stable
+    // API and the corresponding macOS dylib entry points.
+    let api_version = if os_arch.os == "linux" {
+        999999 // CEF_API_VERSION_EXPERIMENTAL; matches the regenerated Linux bindings.
+    } else {
+        cef_api_version_last(&cef_dir)?
+    };
     println!("cargo::metadata=CEF_API_VERSION={api_version}");
 
     let mut cef_dll_wrapper = cmake::Config::new(&cef_dir);

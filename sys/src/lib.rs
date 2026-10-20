@@ -103,3 +103,12 @@ mod test {
         };
     }
 }
+
+/// ABI used by this fork's generated bindings. Linux Wayland additions are experimental.
+#[cfg(target_os = "linux")]
+pub const CEF_API_VERSION_DEFAULT: i32 = CEF_API_VERSION_EXPERIMENTAL;
+#[cfg(not(target_os = "linux"))]
+pub const CEF_API_VERSION_DEFAULT: i32 = CEF_API_VERSION_LAST;
+
+#[cfg(all(target_os = "linux", not(target_arch = "x86_64")))]
+compile_error!("this Wayland fork currently has regenerated bindings only for Linux x86_64");

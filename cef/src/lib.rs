@@ -63,8 +63,7 @@ fn test_init_cef() {
             assert_eq!(sys::cef_load_library(framework_dir.as_ptr().cast()), 1);
         }
 
+        let _ = api_hash(sys::CEF_API_VERSION_DEFAULT, 0);
         assert_eq!(initialize(None, None, None, ptr::null_mut()), 0);
-
-        let _ = api_hash(sys::CEF_API_VERSION_LAST, 0);
     });
 }
